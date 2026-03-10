@@ -7,63 +7,57 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
-<body class="bg-slate-50 min-h-screen flex flex-col items-center p-4 md:p-10">
+<body class="bg-slate-100 min-h-screen p-4 md:p-10 flex flex-col items-center">
 
-    <div class="max-w-4xl w-full bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
-        <header class="bg-blue-600 p-6 text-white text-center">
-            <h1 class="text-2xl font-bold">DocuMind AI</h1>
-            <p class="text-blue-100 text-sm">Upload a PDF and ask anything about its content.</p>
+    <div class="max-w-4xl w-full bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[85vh]">
+        <header class="bg-slate-900 p-6 text-white flex justify-between items-center">
+            <div>
+                <h1 class="text-xl font-bold">DocuMind AI</h1>
+                <p class="text-xs text-slate-400">PDF Knowledge Assistant</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <input type="file" id="fileInput" accept=".pdf" class="hidden" onchange="uploadPDF()"/>
+                <label for="fileInput" id="uploadLabel" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg cursor-pointer transition text-sm font-medium">
+                    <i class="fas fa-file-pdf mr-2"></i>Upload PDF
+                </label>
+            </div>
         </header>
 
-        <section class="p-6 border-b bg-slate-50">
-            <div class="flex flex-col md:flex-row items-center gap-4">
-                <input type="file" id="fileInput" accept=".pdf" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"/>
-                <button onclick="uploadPDF()" id="uploadBtn" class="bg-blue-600 text-white px-6 py-2 rounded-full font-medium hover:bg-blue-700 transition flex items-center gap-2 shrink-0">
-                    <i class="fas fa-upload"></i> Analyze PDF
-                </button>
+        <div id="chat-window" class="flex-1 overflow-y-auto p-6 space-y-4 bg-white">
+            <div class="bg-slate-100 p-3 rounded-lg text-sm max-w-[80%]">
+                Hello! Please upload a PDF document so I can help you analyze it.
             </div>
-            <p id="status" class="text-xs mt-3 text-slate-500"></p>
-        </section>
+        </div>
 
-        <section id="chat-window" class="h-96 overflow-y-auto p-6 space-y-4 bg-white">
-            <div class="bg-slate-100 p-4 rounded-lg text-slate-700 text-sm">
-                Waiting for a document... Please upload a PDF to begin.
-            </div>
-        </section>
-
-        <footer class="p-4 bg-slate-50 border-t flex gap-2">
-            <input type="text" id="userQuestion" placeholder="Ask a question about the document..." class="flex-1 p-3 rounded-lg border focus:ring-2 focus:ring-blue-500 outline-none"/>
-            <button onclick="askAI()" class="bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700">
+        <div class="p-4 bg-slate-50 border-t flex gap-2">
+            <input type="text" id="userQuestion" placeholder="Ask a question..." class="flex-1 p-3 rounded-xl border focus:ring-2 focus:ring-blue-500 outline-none"/>
+            <button onclick="askAI()" class="bg-slate-900 text-white px-6 py-3 rounded-xl hover:bg-black transition">
                 <i class="fas fa-paper-plane"></i>
             </button>
-        </footer>
+        </div>
     </div>
 
     <script>
         async function uploadPDF() {
             const fileInput = document.getElementById('fileInput');
-            const status = document.getElementById('status');
-            const btn = document.getElementById('uploadBtn');
+            const label = document.getElementById('uploadLabel');
+            if (!fileInput.files[0]) return;
 
-            if (!fileInput.files[0]) return alert("Select a file first!");
-
+            label.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Analyzing...';
             const formData = new FormData();
             formData.append('file', fileInput.files[0]);
-
-            status.innerText = "Processing document... this may take a moment.";
-            btn.disabled = true;
 
             const res = await fetch('/upload', { method: 'POST', body: formData });
             const data = await res.json();
 
             if (data.message) {
-                status.className = "text-xs mt-3 text-green-600 font-bold";
-                status.innerText = data.message;
-                addMessage('assistant', "Document ready! What would you like to know?");
+                label.innerHTML = '<i class="fas fa-check mr-2"></i>Ready';
+                label.className = "bg-green-600 px-4 py-2 rounded-lg text-white text-sm";
+                addMessage('assistant', "I've finished reading your document. Ask me anything!");
             } else {
-                status.innerText = "Error: " + data.error;
+                alert(data.error);
+                label.innerHTML = '<i class="fas fa-file-pdf mr-2"></i>Try Again';
             }
-            btn.disabled = false;
         }
 
         async function askAI() {
@@ -86,10 +80,10 @@
         function addMessage(role, text) {
             const win = document.getElementById('chat-window');
             const div = document.createElement('div');
-            div.className = role === 'user' ? 'ml-auto bg-blue-600 text-white p-3 rounded-lg max-w-[80%]' : 'mr-auto bg-slate-100 text-slate-800 p-3 rounded-lg max-w-[80%]';
+            div.className = role === 'user' ? 'ml-auto bg-blue-600 text-white p-3 rounded-xl max-w-[85%]' : 'mr-auto bg-slate-100 text-slate-800 p-3 rounded-xl max-w-[85%]';
             div.innerText = text;
             win.appendChild(div);
-            win.scrollTop = win.scrollHeight;
+            win.scrollTo({ top: win.scrollHeight, behavior: 'smooth' });
         }
     </script>
 </body>
