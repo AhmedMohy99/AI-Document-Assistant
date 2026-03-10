@@ -6,14 +6,16 @@ from langchain_community.vectorstores import DocArrayInMemorySearch
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import RetrievalQA
 
-# CRITICAL FIX: Explicitly set the template folder path for Vercel
-template_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'templates'))
+# FIX: Manually calculate the path to the templates folder
+base_dir = os.path.dirname(os.path.abspath(__file__))
+template_dir = os.path.join(base_dir, '..', 'templates')
+
 app = Flask(__name__, template_folder=template_dir)
 
-# Pull API Key from Vercel Environment Variables
+# Pull key from Vercel Environment Variables
 os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", "")
 
-# Knowledge base storage
+# Global variable for the AI chain
 qa_chain = None
 
 @app.route('/')
@@ -27,50 +29,40 @@ def upload_file():
         return jsonify({"error": "No file uploaded"}), 400
     
     file = request.files['file']
-    if not file.filename.endswith('.pdf'):
-        return jsonify({"error": "Only PDF files are supported"}), 400
-
-    # Vercel uses /tmp for temporary file writing
+    # Vercel requires writing to the /tmp directory
     temp_path = os.path.join("/tmp", file.filename)
     file.save(temp_path)
 
     try:
         loader = PyPDFLoader(temp_path)
-        documents = loader.load()
+        pages = loader.load()
 
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-        docs = text_splitter.split_documents(documents)
+        splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+        docs = splitter.split_documents(pages)
 
-        embeddings = OpenAIEmbeddings()
-        vectorstore = DocArrayInMemorySearch.from_documents(docs, embeddings)
+        vectorstore = DocArrayInMemorySearch.from_documents(docs, OpenAIEmbeddings())
 
         qa_chain = RetrievalQA.from_chain_type(
-            llm=ChatOpenAI(model_name="gpt-4o", temperature=0),
+            llm=ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0),
             chain_type="stuff",
             retriever=vectorstore.as_retriever()
         )
 
+        return jsonify({"message": "File processed successfully!"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
-            
-        return jsonify({"message": f"Successfully indexed {file.filename}!"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 @app.route('/ask', methods=['POST'])
-def ask_question():
+def ask():
     if not qa_chain:
-        return jsonify({"error": "Upload a PDF first!"}), 400
+        return jsonify({"error": "Please upload a PDF first"}), 400
     
-    data = request.json
-    question = data.get("question")
-    
-    try:
-        response = qa_chain.invoke(question)
-        return jsonify({"answer": response["result"]})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    question = request.json.get("question")
+    response = qa_chain.invoke(question)
+    return jsonify({"answer": response["result"]})
 
-# Required for local testing
-if __name__ == "__main__":
-    app.run(debug=True)
+# Required for Vercel to find the app
+app_handler = app
