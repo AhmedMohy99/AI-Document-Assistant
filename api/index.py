@@ -6,59 +6,56 @@ from langchain_community.vectorstores import DocArrayInMemorySearch
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import RetrievalQA
 
-# FIX: Vercel pathing for templates
-base_dir = os.path.dirname(os.path.abspath(__file__))
-template_dir = os.path.join(base_dir, '..', 'templates')
-app = Flask(__name__, template_folder=template_dir)
+# Simple pathing: templates folder is in the same directory as index.py
+app = Flask(__name__)
 
-# Global for the AI chain
+# Knowledge base global
 qa_chain = None
 
 @app.route('/')
-def index():
+def home():
     return render_template('index.html')
 
 @app.route('/upload', methods=['POST'])
-def upload_file():
+def upload():
     global qa_chain
-    # SAFETY CHECK: If no API key, return a clear error instead of crashing
-    if not os.getenv("OPENAI_API_KEY"):
-        return jsonify({"error": "API Key is missing in Vercel Settings!"}), 500
+    # CRITICAL: Prevent crash if API key is missing
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return jsonify({"error": "Config Error: OPENAI_API_KEY is not set in Vercel Settings."}), 500
 
     if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
+        return jsonify({"error": "No file"}), 400
     
     file = request.files['file']
-    temp_path = os.path.join("/tmp", "doc.pdf")
-    file.save(temp_path)
+    # /tmp is the only writable area on Vercel
+    path = os.path.join("/tmp", "doc.pdf")
+    file.save(path)
 
     try:
-        loader = PyPDFLoader(temp_path)
-        docs = loader.load()
-        
+        loader = PyPDFLoader(path)
+        pages = loader.load()
         splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-        chunks = splitter.split_documents(docs)
-
-        vectorstore = DocArrayInMemorySearch.from_documents(chunks, OpenAIEmbeddings())
-
+        docs = splitter.split_documents(pages)
+        
+        # Initialize AI
+        vectorstore = DocArrayInMemorySearch.from_documents(docs, OpenAIEmbeddings(openai_api_key=api_key))
         qa_chain = RetrievalQA.from_chain_type(
-            llm=ChatOpenAI(model_name="gpt-3.5-turbo"),
+            llm=ChatOpenAI(model_name="gpt-3.5-turbo", openai_api_key=api_key),
             chain_type="stuff",
             retriever=vectorstore.as_retriever()
         )
-
-        return jsonify({"message": "File analyzed!"})
+        return jsonify({"message": "Document indexed successfully!"})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"AI Error: {str(e)}"}), 500
 
 @app.route('/ask', methods=['POST'])
 def ask():
     if not qa_chain:
-        return jsonify({"error": "Upload PDF first"}), 400
-    
+        return jsonify({"error": "Please upload a document first."}), 400
     question = request.json.get("question")
     res = qa_chain.invoke(question)
     return jsonify({"answer": res["result"]})
 
-# This must match what Vercel expects
+# Required for Vercel
 app_handler = app
